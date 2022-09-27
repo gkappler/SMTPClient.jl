@@ -65,49 +65,73 @@ get_mime_msg(message::HTML{String}) = get_mime_msg(message.content, Val(:html))
 get_mime_msg(message::Markdown.MD) = get_mime_msg(Markdown.html(message), Val(:html))
 
 #Provide the message body as RFC5322 within an IO
+function get_body(x...; k...)
+    write_body(IOBuffer(),x...; k...)
+end
 
-function get_body(
-        to::Vector{String},
-        from::String,
-        subject::String,
-        msg::String;
-        cc::Vector{String} = String[],
-        replyto::String = "",
-        attachments::Vector{String} = String[]
-    )
 
-    boundary = "Julia_SMTPClient-" * join(rand(collect(vcat('0':'9','A':'Z','a':'z')), 40))
+using Dates
 
+function write_body(io::IO,
+                    to::AbstractVector{<:AbstractString},
+                    from::AbstractString,
+                    subject::AbstractString,
+                    msg::AbstractString;
+                    cc::AbstractVector{<:AbstractString} = String[],
+                    bcc::AbstractVector{<:AbstractString} = String[],
+                    replyto::AbstractString = "",
+                    messageid::AbstractString="",
+                    inreplyto::AbstractString="",
+                    references::AbstractString="",
+                    date::DateTime=now(),
+                    attachments::AbstractVector{<:Attachment} = Attachment[],
+                    boundary = "Julia_SMTPClient-" * join(rand(collect(vcat('0':'9','A':'Z','a':'z')), 40))
+                    )
+    
     tz = mapreduce(
         x -> string(x, pad=2), *,
-        divrem( div( ( now() - now(Dates.UTC) ).value, 60000 ), 60 )
+        divrem( div( ( now() - now(Dates.UTC) ).value, 60000, RoundNearest ), 60 )
     )
-    date = join([Dates.format(now(), "e, d u yyyy HH:MM:SS", locale="english"), tz], " ")
+    date_ = join([Dates.format(date, "e, d u yyyy HH:MM:SS", locale="english"), tz], " +")
 
-    contents = 
-        "From: $from\r\n" *
-        "Date: $date\r\n" *
-        "Subject: $subject\r\n" *
-        ifelse(length(cc) > 0, "Cc: $(join(cc, ", "))\r\n", "") *
-        ifelse(length(replyto) > 0, "Reply-To: $replyto\r\n", "") *
-        "To: $(join(to, ", "))\r\n"
-
-    if length(attachments) == 0
-        contents *=
-            "MIME-Version: 1.0\r\n" *
-            "$msg\r\n\r\n"
-    else
-        contents *=
-            "Content-Type: multipart/mixed; boundary=\"$boundary\"\r\n" *
-            "MIME-Version: 1.0\r\n" *
-            "\r\n" *
-            "This is a message with multiple parts in MIME format.\r\n" *
-            "--$boundary\r\n" * 
-            msg *
-            "\r\n--$boundary\r\n" * 
-            join(encode_attachment.(attachments), "\r\n--$boundary\r\n") *
-            "\r\n--$boundary--\r\n"
+    print(io, "From: $from\r\n")
+    print(io, "Date: $date_\r\n")
+    print(io, "Subject: $subject\r\n")
+    if length(cc) > 0
+        print(io, "Cc: $(join(cc, ", "))\r\n")
     end
-    body = IOBuffer(contents)
-    return body
+    if length(bcc) > 0
+        print(io, "Bcc: $(join(bcc, ", "))\r\n")
+    end
+    if length(replyto) > 0
+        print(io, "Reply-To: $replyto\r\n")
+    end
+    print(io, "To: $(join(to, ", "))\r\n")
+    if length(references) > 0
+        print(io, "References: ", references, "\r\n")
+    end
+    if length(inreplyto) > 0
+        print(io, "In-Reply-To: ", inreplyto, "\r\n")
+    end
+    if length(messageid) > 0
+        print(io, "Message-ID: ",
+              "<" * messageid * ">", "\r\n")
+    end
+    msg = replace(msg, r"[ \r\n\t]+$" => "\r\n", r"^[\r\n\t]+" => "")
+    if length(attachments) == 0
+        print(io, "Content-Type: text/plain; charset=UTF-8\r\n")
+        print(io, "MIME-Version: 1.0\r\n")
+        print(io, "\r\n$msg\r\n\r\n")
+    else
+        print(io, "Content-Type: multipart/mixed; boundary=\"$boundary\"\r\n\r\n")
+        print(io, "MIME-Version: 1.0\r\n",
+              "\r\n",
+              "This is a message with multiple parts in MIME format.\r\n",
+              "--$boundary\r\n",
+              "$(get_mime_msg(msg))\r\n",
+              "--$boundary\r\n",
+              "\r\n")
+        join(io,encode_attachment.(attachments, boundary), "\r\n")
+    end
+    io
 end

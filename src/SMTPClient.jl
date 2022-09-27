@@ -10,7 +10,7 @@ import Base: convert
 import Sockets: send
 
 export SendOptions, SendResponse, send
-export get_body, get_mime_msg
+export write_body, get_body, get_mime_msg
 
 include("utils.jl")
 include("types.jl")
