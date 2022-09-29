@@ -1,4 +1,14 @@
-function encode_attachment(filename::String)
+export HTML
+struct MimeContent{mime<:MIME}
+    filename::String
+    content::String
+end
+HTML = MimeContent{MIME{Symbol("text/html")}}
+Attachment = Union{AbstractString,MimeContent}
+
+MimeContent{MIME{Symbol("text/html")}}(x::AbstractString) = MimeContent{MIME{Symbol("text/html")}}("",x)
+
+function encode_attachment(filename::String, boundary::String)
     io = IOBuffer()
     iob64_encode = Base64EncodePipe(io)
     open(filename, "r") do f
@@ -32,6 +42,47 @@ function encode_attachment(filename::String)
     return encoded_str
 end
 
+function encode_attachment(html::HTML, boundary::String)
+    encoded_str = 
+        "--$boundary\r\n" *
+        "$(get_mime_msg(html,Val{:html}()))\r\n" *
+        "--$boundary\r\n"
+    return encoded_str
+end
+
+function encode_attachment(m::MimeContent{MIME{mime}}, boundary::String) where mime
+    io = IOBuffer()
+    iob64_encode = Base64EncodePipe(io)
+    write(iob64_encode, m.content)
+    close(iob64_encode)
+
+    filename_ext = split(m.filename, '.')[end]
+
+    if haskey(mime_types, filename_ext)
+        content_type = mime_types[filename_ext]
+    else
+        content_type = "$mime"
+    end
+
+    if haskey(mime_types, filename_ext) && startswith(mime_types[filename_ext], "image")
+        content_disposition = "inline"
+    else
+        content_disposition = "attachment"
+    end
+
+    encoded_str = 
+        "--$boundary\r\n" *
+        "Content-Type: $content_type;\r\n" *
+        "Content-Disposition: $content_disposition;\r\n" *
+        "    filename=$(basename(m.filename))\r\n" *
+        "Content-Transfer-Encoding: base64\r\n" *
+        "Content-Description: $(basename(m.filename))\r\n" *
+        "\r\n" *
+        "$(String(take!(io)))\r\n" *
+        "--$boundary\r\n"
+    return encoded_str
+end
+
 # See https://www.w3.org/Protocols/rfc1341/7_1_Text.html about charset
 function get_mime_msg(message::String, ::Val{:plain}, charset::String = "UTF-8")
     msg = 
@@ -49,7 +100,8 @@ get_mime_msg(message::String, ::Val{:usascii}) =
 
 get_mime_msg(message::String) = get_mime_msg(message, Val(:utf8))
 
-function get_mime_msg(message::String, ::Val{:html})
+
+function get_mime_msg(message, ::Val{:html})
     msg = 
         "Content-Type: text/html;\r\n" *
         "Content-Transfer-Encoding: 7bit;\r\n\r\n" *
@@ -60,7 +112,7 @@ function get_mime_msg(message::String, ::Val{:html})
     return msg
 end
 
-get_mime_msg(message::HTML{String}) = get_mime_msg(message.content, Val(:html))
+get_mime_msg(message::HTML) = get_mime_msg(message.content, Val(:html))
 
 get_mime_msg(message::Markdown.MD) = get_mime_msg(Markdown.html(message), Val(:html))
 
@@ -69,6 +121,29 @@ function get_body(x...; k...)
     write_body(IOBuffer(),x...; k...)
 end
 
+function write_body(io::IO,
+                    to::AbstractVector{<:AbstractString},
+                    from::AbstractString,
+                    subject::AbstractString,
+                    msg::HTML;
+                    attachments::AbstractVector{<:Attachment} = Attachment[],
+                    k...
+                    )
+    iob = IOBuffer()
+    @show txt = open(`html2text`, "w", iob) do io
+        print(io,@show msg.content)
+    end
+    attachments = Attachment[attachments...]
+    pushfirst!(attachments, msg)
+    write_body(io,
+               to,
+               from,
+               subject,
+               String(take!(iob));
+               attachments = attachments,
+               k...
+                   )
+end
 
 using Dates
 
