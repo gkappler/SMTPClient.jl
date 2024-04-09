@@ -10,13 +10,14 @@ import Base: convert
 import Sockets: send
 
 export SendOptions, SendResponse, send
-export write_body, get_body, get_mime_msg
+export write_body, get_body, rfc5322mail
 
 include("utils.jl")
 include("types.jl")
 include("cbs.jl")  # callbacks
 include("mail.jl")
 include("mime_types.jl")
+include("multipart.jl")
 include("user.jl")
 
 ##############################
