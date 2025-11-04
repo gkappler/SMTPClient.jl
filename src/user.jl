@@ -60,27 +60,43 @@ using Dates
 write_rfc5322mail(io::IO, to::AbstractString, subject, msg; kw...) =
     write_rfc5322mail(io, [to], subject, msg; kw...)
 
-write_rfc5322mail(io::IO, to::AbstractVector{<:AbstractString}, subject,msg::AbstractString; kw...) =
+write_rfc5322mail(io::IO, to::AbstractVector, subject,msg::AbstractString; kw...) =
     write_rfc5322mail(io, to, subject, Plain(msg); kw... )
 
-write_rfc5322mail(io::IO, to::AbstractVector{<:AbstractString}, subject, part::Markdown.MD; kw...) =
+write_rfc5322mail(io::IO, to::AbstractVector, subject, part::Markdown.MD; kw...) =
     write_rfc5322mail(io, to, subject,
                       MultiPart(:alternative,
                                 Plain(Markdown.plain(part)),
                                 HTML(Markdown.html(part)));
                       kw...)
 
-function write_rfc5322mail(io::IO, to::AbstractVector{<:AbstractString}, subject, part::Content;
-                       from::AbstractString = ENV["FROM"],
-                       cc::AbstractVector{<:AbstractString} = String[],
-                       bcc::AbstractVector{<:AbstractString} = String[],
-                       replyto::AbstractString = "",
-                       messageid::AbstractString="",
-                       inreplyto::AbstractString="",
-                       references::AbstractString="",
+references_str(x::Missing) = missing
+references_str(x::Number) = "<$x>"
+references_str(x::AbstractString) = isempty(x) ? "" : "<$x>"
+references_str(x::AbstractVector) = isempty(x) ? "" : "<" * join(x,",") * ">"
+
+write_rfc5322header(io, key::AbstractString, value::AbstractString) = 
+    value != "" && print(io, "$key: $value\r\n")
+
+capitalize(x) = uppercase(x[1]) * lowercase(x[2:end])
+write_rfc5322header(io, key::Symbol, value::AbstractString) = 
+    write_rfc5322header(io, join([capitalize(w) for w in split("$key", "_")], "-"), value) 
+
+write_rfc5322header(io, key::AbstractString, value::Missing) = nothing
+
+function write_rfc5322mail(io::IO, to::AbstractVector, subject, part::Content;
+                       from = ENV["FROM"],
+                       cc = String[],
+                       bcc = String[],
+                       replyto = "",
+                       messageid="",
+                       inreplyto="",
+                       references="",
                        date::DateTime=now(),
-                       headers = Pair{String,String}[]
-                       )
+                           keywords = String[],
+                           headers...
+
+                           )
     
     tz = mapreduce(
         x -> string(x, pad=2), *,
@@ -88,34 +104,22 @@ function write_rfc5322mail(io::IO, to::AbstractVector{<:AbstractString}, subject
     )
     date_ = join([Dates.format(date, "e, d u yyyy HH:MM:SS", locale="english"), tz], " +")
 
-    print(io, "From: $from\r\n")
-    print(io, "To: $(join(to, ", "))\r\n")
-    if length(cc) > 0
-        print(io, "Cc: $(join(cc, ", "))\r\n")
-    end
-    if length(bcc) > 0
-        print(io, "Bcc: $(join(bcc, ", "))\r\n")
-    end
+    write_rfc5322header(io, "Date", date_)
+    write_rfc5322header(io, "From", from)
+    write_rfc5322header(io, "Reply-To",replyto)
+    write_rfc5322header(io, "To", join(to, ", "))
+    write_rfc5322header(io, "Cc", join(cc, ", "))
+    write_rfc5322header(io, "Bcc", join(bcc, ", "))
     print(io, "Subject: $subject\r\n")
-    if length(replyto) > 0
-        print(io, "Reply-To: $replyto\r\n")
-    end
-    if length(references) > 0
-        print(io, "References: ", references, "\r\n")
-    end
-    if length(inreplyto) > 0
-        print(io, "In-Reply-To: ", inreplyto, "\r\n")
-    end
+    !isempty(keywords) && push!(headers, "X-Keywords" => join(replace.(keywords,","=>"-"), ","))
+    write_rfc5322header(io, "In-Reply-To", references_str(inreplyto))
+    write_rfc5322header(io, "References", references_str(references))
+    write_rfc5322header(io, "Message-ID", references_str(messageid))
     for (k,v) in headers
-        print(io, "$k: ", v, "\r\n")
-    end
-    if length(messageid) > 0
-        print(io, "Message-ID: ",
-              "<" * messageid * ">", "\r\n")
+        write_rfc5322header(io, k, v)
     end
     #if length(parts) == 1
     print(io, "MIME-Version: 1.0\r\n")
-    print(io, "Date: $date_\r\n")
     print(io, part)
         # print(io, "Content-Type: text/plain; charset=UTF-8\r\n")
         # print(io, "\r\n$msg\r\n\r\n")

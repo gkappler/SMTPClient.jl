@@ -63,7 +63,7 @@ struct MIMEContent{content_type <: MIME} <: Content
     end
 end
 
-
+export MIMEContent
                           # if startswith(string(mimesymbol(content_type)),"text/")
                           #     "quoted-printable"
                           # else
@@ -72,7 +72,7 @@ end
 MIMEContent(content_disposition, content_type::AbstractString, filename, content) =
     MIMEContent(content_disposition, MIME(content_type), filename, content)
 
-function MIMEContent(filename, content)
+function MIMEContent(filename, content=read(filename, String))
     filename_ext = split(filename, '.')[end]
 
     if haskey(mime_types, filename_ext)
