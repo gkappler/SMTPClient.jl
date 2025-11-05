@@ -61,13 +61,13 @@ write_rfc5322mail(io::IO, to::AbstractString, subject, msg; kw...) =
     write_rfc5322mail(io, [to], subject, msg; kw...)
 
 write_rfc5322mail(io::IO, to::AbstractVector, subject,msg::AbstractString; kw...) =
-    write_rfc5322mail(io, to, subject, Plain(msg); kw... )
+    write_rfc5322mail(io, to, subject, PlainContent(msg); kw... )
 
 write_rfc5322mail(io::IO, to::AbstractVector, subject, part::Markdown.MD; kw...) =
     write_rfc5322mail(io, to, subject,
                       MultiPart(:alternative,
-                                Plain(Markdown.plain(part)),
-                                HTML(Markdown.html(part)));
+                                PlainContent(Markdown.plain(part)),
+                                HTMLContent(Markdown.html(part)));
                       kw...)
 
 references_str(x::Missing) = missing

@@ -1,4 +1,4 @@
-export HTML
+export HTMLContent
 # Content = Union{AbstractString,MimeContent,MultiPart}
 abstract type Content end
 @enum MultiPartSubType mixed alternative digest parallel
@@ -35,14 +35,14 @@ MultiPart(subtype::Symbol, parts...) =
               )
 
 
-struct Plain <: Content
+struct PlainContent <: Content
     content_transfer_encoding::String
     content::String
-    Plain(msg) =
+    PlainContent(msg) =
         new("",msg) # replace(msg, r"[ \r\n\t]+$" => "\r\n", r"^[\r\n\t]+" => "")
 end
 
-function Base.show(io::IO, x::Plain; charset="UTF-8")
+function Base.show(io::IO, x::PlainContent; charset="UTF-8")
     print(io, "Content-Type: text/plain; charset=\"$charset\"\r\n\r\n")
     print(io, x.content)
 end
@@ -89,9 +89,9 @@ function MIMEContent(filename, content=read(filename, String))
     MIMEContent(content_disposition, content_type, filename, content)
 end
 
-HTML(x; content_disposition = "inline") = MIMEContent(content_disposition,"text/html","",x)
-HTML(filename, x) = MIMEContent("attachment","text/html",filename,x)
-#HTML
+HTMLContent(x; content_disposition = "inline") = MIMEContent(content_disposition,"text/html","",x)
+HTMLContent(filename, x) = MIMEContent("attachment","text/html",filename,x)
+#HTMLContent
 
 function encode_content(m)
     if lowercase(m.content_transfer_encoding) == "base64"
@@ -137,13 +137,13 @@ end
 #     subtype::String
 #     parameter::Dict{String,String}
 # end
-export MultiPart, Plain
+export MultiPart, PlainContent
 
 function encode_attachment(x::Content)
     string(x)
 end
 
-function encode_attachment(x::Plain)
+function encode_attachment(x::PlainContent)
     "Content-Type: text/plain; charset=UTF-8\r\n" *
         (x.content_transfer_encoding =="" ? "" : "Content-Transfer-Encoding: $(x.content_transfer_encoding)\r\n") *
         "\r\n" *
@@ -192,7 +192,7 @@ function encode_attachment(filename::String)
     # return encoded_str
 end
 
-# function encode_attachment(html::HTML)
+# function encode_attachment(html::HTMLContent)
 #     encoded_str = 
 #         "$(get_mime_msg(html,Val{:html}()))\r\n"
 #     return encoded_str
@@ -220,7 +220,7 @@ end
 
 # get_mime_msg(message::String) = get_mime_msg(message, Val(:utf8))
 
-# # get_mime_msg(message::HTML, ::Val{:html}) =
+# # get_mime_msg(message::HTMLContent, ::Val{:html}) =
 # #     get_mime_msg(message.content, Val(:html))
     
 # function get_mime_msg(message::AbstractString, ::Val{:html})
@@ -234,6 +234,6 @@ end
 #     return msg
 # end
 
-# #get_mime_msg(message::HTML) = get_mime_msg(message.content, Val(:html))
+# #get_mime_msg(message::HTMLContent) = get_mime_msg(message.content, Val(:html))
 
 # get_mime_msg(message::Markdown.MD) = get_mime_msg(Markdown.html(message), Val(:html))
